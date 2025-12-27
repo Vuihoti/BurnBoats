@@ -5,165 +5,90 @@
 #include "OnlineSubsystem.h"
 #include "OnlineSessionSettings.h"
 #include "Online/OnlineSessionNames.h"
-
-UGameInstanceBase::UGameInstanceBase()
+#include "Kismet/GamePlayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "GameFramework/GameUserSettings.h"
+void UGameInstanceBase::LoadingLocalSettings()
 {
-	PlayerName = TEXT("Player");
-}
-
-void UGameInstanceBase::Init()
-{
-	Super::Init();
-
-	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
-	if (OnlineSubsystem)
+	GameLocalSetting = UGameUserSettings::GetGameUserSettings();
+	switch (GameLocalSetting->GetFullscreenMode())
 	{
-		SessionInterface = OnlineSubsystem->GetSessionInterface();
+	case EWindowMode::Fullscreen:
+		OnlinePlayerSet.WindowMode = "FullScreen";
+		break;
+	case EWindowMode::WindowedFullscreen:
+		OnlinePlayerSet.WindowMode = "WindowedFullscreen";
+		break;
+	case EWindowMode::Windowed:
+		OnlinePlayerSet.WindowMode = "Windowed";
+		break;
+	}
+	OnlinePlayerSet.Resolution = GameLocalSetting->GetScreenResolution();
+	if (GameLocalSetting->GetFrameRateLimit() == 1000.f) {
+		OnlinePlayerSet.MaxFPS = "NoLimit";
+	}
+	else {
+		OnlinePlayerSet.MaxFPS = FString::FromInt(GameLocalSetting->GetFrameRateLimit());
+	}
+	OnlinePlayerSet.VSync = GameLocalSetting->IsVSyncEnabled();
 
-		// 绑定委托
-		CreateSessionCompleteDelegate = FOnCreateSessionCompleteDelegate::CreateUObject(this, &UGameInstanceBase::OnCreateSessionComplete);
-		FindSessionsCompleteDelegate = FOnFindSessionsCompleteDelegate::CreateUObject(this, &UGameInstanceBase::OnFindSessionsComplete);
-		JoinSessionCompleteDelegate = FOnJoinSessionCompleteDelegate::CreateUObject(this, &UGameInstanceBase::OnJoinSessionComplete);
-		DestroySessionCompleteDelegate = FOnDestroySessionCompleteDelegate::CreateUObject(this, &UGameInstanceBase::OnDestroySessionComplete);
+	OnlinePlayerSet.ViewDistance = GameLocalSetting->GetViewDistanceQuality();
+	OnlinePlayerSet.GlobalIllumination = GameLocalSetting->GetGlobalIlluminationQuality();
+	OnlinePlayerSet.AntiAliasing = GameLocalSetting->GetAntiAliasingQuality();
+	OnlinePlayerSet.PostProcessing = GameLocalSetting->GetPostProcessingQuality();
+	OnlinePlayerSet.Reflection = GameLocalSetting->GetReflectionQuality();
+	OnlinePlayerSet.Texture = GameLocalSetting->GetTextureQuality();
+	OnlinePlayerSet.Shadow = GameLocalSetting->GetShadowQuality();
+	OnlinePlayerSet.Shading = GameLocalSetting->GetShadingQuality();
+
+	if (UGameplayStatics::DoesSaveGameExist("SG_Setting", 0)) {
+		SaveGameSetting = Cast<USaveGameSetting>(UGameplayStatics::LoadGameFromSlot("SG_Setting", 0));
+		OnlinePlayerSet = SaveGameSetting->LocalGameSetting;
+	}
+	else {
+		SaveGameSetting == nullptr ? Cast<USaveGameSetting>(UGameplayStatics::CreateSaveGameObject(USaveGameSetting::StaticClass())) : SaveGameSetting;
+		SaveGameSetting->LocalGameSetting = OnlinePlayerSet;
+		UGameplayStatics::SaveGameToSlot(SaveGameSetting, "SG_Setting", 0);
 	}
 }
 
-void UGameInstanceBase::CreateSession(FName SessionName, FString GameMode)
+void UGameInstanceBase::LoadingLocalArchive()
 {
-	if (SessionInterface.IsValid())
+	if (!UGameplayStatics::DoesSaveGameExist("SG_Player", 0))
 	{
-		SessionSettings = MakeShareable(new FOnlineSessionSettings());
-		SessionSettings->bIsLANMatch = true; // 局域网
-		SessionSettings->NumPublicConnections = 4; // 最大玩家数
-		SessionSettings->bShouldAdvertise = true;
-		SessionSettings->bAllowJoinInProgress = true;
-		SessionSettings->bAllowJoinViaPresence = true;
-		SessionSettings->bUsesPresence = true;
-		SessionSettings->Set(FName("GAMEMODE"), GameMode, EOnlineDataAdvertisementType::ViaOnlineService);
-
-		// 创建会话
-		CreateSessionCompleteDelegateHandle = SessionInterface->AddOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegate);
-		SessionInterface->CreateSession(0, SessionName, *SessionSettings);
+		CreateANewArchive();
 	}
-}
-
-void UGameInstanceBase::FindSessions()
-{
-	if (SessionInterface.IsValid())
+	SavePlayerData = Cast<USaveGamePlayer>(UGameplayStatics::LoadGameFromSlot("SG_Player", 0));
+	if (SavePlayerData)
 	{
-		SessionSearch = MakeShareable(new FOnlineSessionSearch());
-		SessionSearch->bIsLanQuery = true;
-		SessionSearch->MaxSearchResults = 100;
-		SessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
-
-		FindSessionsCompleteDelegateHandle = SessionInterface->AddOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegate);
-		SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
-	}
-}
-
-void UGameInstanceBase::JoinSession(const FOnlineSessionSearchResult& SessionResult)
-{
-	if (SessionInterface.IsValid())
-	{
-		JoinSessionCompleteDelegateHandle = SessionInterface->AddOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegate);
-		SessionInterface->JoinSession(0, NAME_GameSession, SessionResult);
-	}
-}
-
-void UGameInstanceBase::DestroySession()
-{
-	if (SessionInterface.IsValid())
-	{
-		DestroySessionCompleteDelegateHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegate);
-		SessionInterface->DestroySession(NAME_GameSession);
-	}
-}
-
-void UGameInstanceBase::StartGame()
-{
-	UWorld* World = GetWorld();
-	if (World)
-	{
-		// 切换到游戏地图
-		FString MapPath = TEXT("/Game/Maps/GameplayMap");
-		World->ServerTravel(MapPath + "?listen");
-	}
-}
-
-FString UGameInstanceBase::GetCurrentSessionIP() const
-{
-	FString ConnectInfo;
-	if (SessionInterface.IsValid() && SessionInterface->GetResolvedConnectString(NAME_GameSession, ConnectInfo))
-	{
-		return ConnectInfo;
-	}
-	return TEXT("");
-}
-
-void UGameInstanceBase::JoinByIP(const FString& IPAddress)
-{
-	APlayerController* PlayerController = GetFirstLocalPlayerController();
-	if (PlayerController)
-	{
-		FString TravelURL = FString::Printf(TEXT("%s:7777"), *IPAddress);
-		PlayerController->ClientTravel(TravelURL, TRAVEL_Absolute);
-	}
-}
-
-void UGameInstanceBase::OnCreateSessionComplete(FName SessionName, bool bWasSuccessful)
-{
-	SessionInterface->ClearOnCreateSessionCompleteDelegate_Handle(CreateSessionCompleteDelegateHandle);
-	if (bWasSuccessful)
-	{
-		UE_LOG(LogTemp, Log, TEXT("Session created successfully"));
+		OnlinePlayerData = SavePlayerData->PlayerData;
 	}
 	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to create session"));
+		UE_LOG(LogTemp, Error, TEXT("Failed to load player archive!"));
+	}
+
+}
+
+void UGameInstanceBase::SaveLocalArchive()
+{
+	SavePlayerData = Cast<USaveGamePlayer>(UGameplayStatics::LoadGameFromSlot("SG_Player", 0));
+	SavePlayerData->PlayerData = OnlinePlayerData;
+	UGameplayStatics::SaveGameToSlot(SavePlayerData, "SG_Player", 0);
+}
+
+void UGameInstanceBase::SaveLocalGameSetting()
+{
+	if (UGameplayStatics::DoesSaveGameExist("SG_Setting", 0)) {
+		SaveGameSetting = Cast<USaveGameSetting>(UGameplayStatics::LoadGameFromSlot("SG_Setting", 0));
+		SaveGameSetting->LocalGameSetting = OnlinePlayerSet;
+		UGameplayStatics::SaveGameToSlot(SaveGameSetting, "SG_Setting", 0);
 	}
 }
 
-void UGameInstanceBase::OnFindSessionsComplete(bool bWasSuccessful)
+void UGameInstanceBase::CreateANewArchive()
 {
-	SessionInterface->ClearOnFindSessionsCompleteDelegate_Handle(FindSessionsCompleteDelegateHandle);
-	if (bWasSuccessful && SessionSearch.IsValid())
-	{
-		TArray<FOnlineSessionSearchResult> SearchResults = SessionSearch->SearchResults;
-		// 在这里可以处理搜索到的会话，例如更新UI
-		UE_LOG(LogTemp, Log, TEXT("Found %d sessions"), SearchResults.Num());
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to find sessions"));
-	}
-}
-
-void UGameInstanceBase::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
-{
-	SessionInterface->ClearOnJoinSessionCompleteDelegate_Handle(JoinSessionCompleteDelegateHandle);
-	if (Result == EOnJoinSessionCompleteResult::Success)
-	{
-		APlayerController* PlayerController = GetFirstLocalPlayerController();
-		if (PlayerController)
-		{
-			FString TravelURL;
-			if (SessionInterface->GetResolvedConnectString(SessionName, TravelURL))
-			{
-				PlayerController->ClientTravel(TravelURL, TRAVEL_Absolute);
-			}
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Failed to join session"));
-	}
-}
-
-void UGameInstanceBase::OnDestroySessionComplete(FName SessionName, bool bWasSuccessful)
-{
-	SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
-	if (bWasSuccessful)
-	{
-		UE_LOG(LogTemp, Log, TEXT("Session destroyed successfully"));
-	}
+	SavePlayerData = Cast<USaveGamePlayer>(UGameplayStatics::CreateSaveGameObject(USaveGamePlayer::StaticClass()));
+	SavePlayerData->PlayerData = OnlinePlayerData;
+	UGameplayStatics::SaveGameToSlot(SavePlayerData, "SG_Player", 0);
 }

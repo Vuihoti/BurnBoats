@@ -8,7 +8,7 @@ public class BurnBoats : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Niagara", "EnhancedInput", "OnlineSubsystem", "OnlineSubsystemUtils", "UMG" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "Niagara", "EnhancedInput", "OnlineSubsystem", "OnlineSubsystemUtils", "UMG", "SlateCore", "Slate", "Niagara" });
 
         PrivateDependencyModuleNames.AddRange(new string[] {  });
 

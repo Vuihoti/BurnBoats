@@ -6,7 +6,145 @@
 #include "Engine/GameInstance.h"
 #include "Interfaces/OnlineSessionInterface.h"
 #include "OnlineSessionSettings.h"
+#include "GameFramework/SaveGame.h"
 #include "GameInstanceBase.generated.h"
+
+USTRUCT(BlueprintType)
+struct FGameSets
+{
+	GENERATED_BODY();
+
+public:
+	UPROPERTY(BlueprintReadWrite, EditAnywhere)
+	bool FirstTime = true;
+
+	//帧数显示
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	bool ShowFPS = false;
+
+	//垂直同步
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	bool VSync = true;
+
+	//最大帧数
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	FString MaxFPS = "60";
+
+	//分辨率
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	FIntPoint Resolution = { 1920,1080 };
+
+	//窗口模式
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	FString WindowMode = "FullScreen";
+
+	//是否启用DLSS
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	bool bDLSS = false;
+
+	//光线追踪品质
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 DLSSQuality = 2;
+
+	//是否启用DLSS帧生成
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	bool bFrameGeneration = false;
+
+	//是否启用光线追踪
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	bool bRayTracing = false;
+
+	//光线追踪品质
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 RayTracingQuality = 1;
+
+	//是否启用动态模糊
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	bool bMotionBlur = true;
+
+
+	//视距
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 ViewDistance = 2;
+
+	//抗锯齿
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 AntiAliasing = 2;
+
+	//后期处理
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 PostProcessing = 2;
+
+	//阴影
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 Shadow = 2;
+
+	//全局光照
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 GlobalIllumination = 2;
+
+	//反射
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 Reflection = 2;
+
+	//纹理
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 Texture = 2;
+
+	//着色
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Screen")
+	int32 Shading = 2;
+
+
+	//灵敏度
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Input")
+	float MouseSensitivity = 0.4f;
+
+
+	//总音量
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Volume")
+	float TotalVolume = 1.f;
+
+	//背景音量
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Volume")
+	float BackgroundVolume = 1.f;
+
+	//音效音量
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Volume")
+	float SoundEffectVolume = 1.f;
+
+	//语音音量
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Volume")
+	float VoiceVolume = 1.f;
+};
+
+USTRUCT(BlueprintType)
+struct FPlayerData {
+	GENERATED_BODY();
+
+public:
+	FString PlayerName;
+};
+
+UCLASS()
+class BURNBOATS_API USaveGameSetting : public USaveGame
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintReadWrite)
+	FGameSets LocalGameSetting;
+};
+
+UCLASS()
+class BURNBOATS_API USaveGamePlayer : public USaveGame
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(BlueprintReadWrite)
+	FPlayerData PlayerData;
+};
+
 
 UCLASS()
 class BURNBOATS_API UGameInstanceBase : public UGameInstance
@@ -14,52 +152,36 @@ class BURNBOATS_API UGameInstanceBase : public UGameInstance
 	GENERATED_BODY()
 
 public:
-    UGameInstanceBase();
 
-	// 玩家名称
-	UPROPERTY(BlueprintReadWrite, Category = "Player")
-	FString PlayerName;
+	UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+	UGameUserSettings* GameLocalSetting;
 
-	// 会话管理
-	void CreateSession(FName SessionName, FString GameMode);
+	//游戏线上数据
+	UPROPERTY(BlueprintReadWrite)
+	FGameSets OnlinePlayerSet;
 
-	void FindSessions();
+	UPROPERTY(BlueprintReadWrite)
+	FPlayerData OnlinePlayerData;
 
-	void JoinSession(const FOnlineSessionSearchResult& SessionResult);
+	//本地内存数据
+	UPROPERTY(BlueprintReadOnly)
+	USaveGameSetting* SaveGameSetting;
 
-	void DestroySession();
+	UPROPERTY(BlueprintReadOnly)
+	USaveGamePlayer* SavePlayerData;
 
-	// 通过IP地址加入
-	void JoinByIP(const FString& IPAddress);
+	UFUNCTION(BlueprintCallable)
+	void LoadingLocalSettings();
 
-	// 启动游戏
-	void StartGame();
+	UFUNCTION(BlueprintCallable)
+	void LoadingLocalArchive();
 
-	// 获取当前会话的IP地址
-	FString GetCurrentSessionIP() const;
+	UFUNCTION(BlueprintCallable)
+	void SaveLocalArchive();
 
-protected:
-	virtual void Init() override;
+	UFUNCTION(BlueprintCallable)
+	void SaveLocalGameSetting();
 
-private:
-	IOnlineSessionPtr SessionInterface;
-	TSharedPtr<class FOnlineSessionSettings> SessionSettings;
-	TSharedPtr<class FOnlineSessionSearch> SessionSearch;
-
-	// 委托绑定
-	FOnCreateSessionCompleteDelegate CreateSessionCompleteDelegate;
-	FOnFindSessionsCompleteDelegate FindSessionsCompleteDelegate;
-	FOnJoinSessionCompleteDelegate JoinSessionCompleteDelegate;
-	FOnDestroySessionCompleteDelegate DestroySessionCompleteDelegate;
-
-	FDelegateHandle CreateSessionCompleteDelegateHandle;
-	FDelegateHandle FindSessionsCompleteDelegateHandle;
-	FDelegateHandle JoinSessionCompleteDelegateHandle;
-	FDelegateHandle DestroySessionCompleteDelegateHandle;
-
-	// 委托回调函数
-	void OnCreateSessionComplete(FName SessionName, bool bWasSuccessful);
-	void OnFindSessionsComplete(bool bWasSuccessful);
-	void OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
-	void OnDestroySessionComplete(FName SessionName, bool bWasSuccessful);
+	UFUNCTION(BlueprintCallable)
+	void CreateANewArchive();
 };
